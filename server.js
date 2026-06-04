@@ -208,60 +208,57 @@ app.post('/api/sanctions', async (req, res) => {
 });
 
 // Supprime du site ET annule en direct la sanction sur Discord
-app.delete('/api/sanctions/:type/:id', async (req, res) => {
-    let { type, id } = req.params;
-    type = type.toLowerCase();
-    if (type.endsWith('s')) type = type.slice(0, -1); // Sécurise les pluriels au cas où
+app.delete('/api/sanctions/:table/:id', async (req, res) => {
+    const { table, id } = req.params; // 'table' recevra 'mutes', 'bans' ou 'warns'
     
-    const dbTable = type + 's';
-
-    console.log(`🗑️ Clic détecté sur le site ! Type : ${type}, ID : ${id}`);
+    console.log(`🗑️ Demande de suppression reçue pour la table : ${table}, ID de ligne : ${id}`);
 
     try {
-        // 1. On cherche d'abord l'ID de l'utilisateur dans la base de données
-        const data = await pool.query(`SELECT user_id FROM ${dbTable} WHERE id = $1`, [id]);
+        // 1. On cherche l'ID Discord de l'utilisateur dans la table correspondante
+        const data = await pool.query(`SELECT user_id FROM ${table} WHERE id = $1`, [id]);
         
         if (data.rows.length > 0) {
             const userIdDiscord = data.rows[0].user_id;
-            console.log(`👤 Utilisateur trouvé dans la DB. ID Discord : ${userIdDiscord}`);
+            console.log(`👤 Utilisateur trouvé dans la base de données. ID Discord : ${userIdDiscord}`);
 
             if (GUILD_ID) {
-                const guild = await client.guilds.fetch(GUILD_ID).catch((e) => {
-                    console.error("❌ Impossible de trouver le serveur Discord :", e.message);
-                    return null;
-                });
+                const guild = await client.guilds.fetch(GUILD_ID).catch(() => null);
 
                 if (guild) {
-                    // Si on retire un MUTE du site -> On enlève l'exclusion sur Discord
-                    if (type === 'mute') {
-                        const member = await guild.members.fetch(userIdDiscord).catch(() => null);
-                        if (member) {
-                            await member.timeout(null, "Sanction annulée depuis le site web");
-                            console.log(`🔊 Unmute appliqué avec succès sur Discord pour ${member.user.username}`);
-                        } else {
-                            console.log("⚠️ Le membre n'est plus sur le serveur Discord.");
+                    // Si on supprime de la table 'mutes', on enlève le timeout sur Discord
+                    if (table === 'mutes' || table === 'mute') {
+                        try {
+                            const member = await guild.members.fetch(userIdDiscord).catch(() => null);
+                            if (member && member.communicationDisabledUntilTimestamp) {
+                                await member.timeout(null, "Sanction annulée depuis le site web");
+                                console.log(`🔊 Unmute appliqué sur Discord pour ${member.user.username}`);
+                            }
+                        } catch (discordErr) {
+                            console.log("⚠️ Impossible d'unmute sur Discord (permissions ou membre parti), mais on continue la suppression sur le site.");
                         }
                     } 
-                    // Si on retire un BAN du site -> On unban l'utilisateur sur Discord
-                    else if (type === 'ban') {
-                        await guild.bans.remove(userIdDiscord, "Sanction annulée depuis le site web")
-                            .then(() => console.log(`🔓 Unban appliqué avec succès sur Discord pour l'ID ${userIdDiscord}`))
-                            .catch((e) => console.error("⚠️ Impossible d'unban sur Discord :", e.message));
+                    // Si on supprime de la table 'bans', on unban sur Discord
+                    else if (table === 'bans' || table === 'ban') {
+                        try {
+                            await guild.bans.remove(userIdDiscord, "Sanction annulée depuis le site web");
+                            console.log(`🔓 Unban appliqué sur Discord pour l'ID ${userIdDiscord}`);
+                        } catch (discordErr) {
+                            console.log("⚠️ Impossible d'unban sur Discord (l'utilisateur n'était peut-être plus banni).");
+                        }
                     }
                 }
-            } else {
-                console.log("⚠️ GUILD_ID n'est pas défini dans les variables Render. L'action Discord est ignorée.");
             }
         }
 
-        // 2. On supprime enfin la ligne de la base de données pour l'effacer du tableau
-        await pool.query(`DELETE FROM ${dbTable} WHERE id = $1`, [id]);
-        console.log(`✅ Ligne nettoyée avec succès de la table ${dbTable}.`);
-        res.json({ success: true });
+        // 2. On supprime la ligne de la base de données quoi qu'il arrive
+        await pool.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
+        console.log(`✅ Ligne ID ${id} supprimée avec succès de la table ${table}.`);
+        
+        return res.json({ success: true });
 
     } catch (err) { 
-        console.error("❌ Erreur générale lors de la suppression :", err);
-        res.status(500).json({ error: err.message }); 
+        console.error("❌ Erreur lors de la suppression :", err);
+        return res.status(500).json({ error: err.message }); 
     }
 });
 

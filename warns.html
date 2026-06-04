@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Staff Dashboard - Avertissements</title>
+    <style>
+        :root {
+            --bg-main: #1e1f22;
+            --bg-card: #2b2d31;
+            --bg-table-header: #111214;
+            --text-main: #f2f3f5;
+            --text-muted: #949ba4;
+            --accent-color: #5865f2;
+            --warning-color: #f0b232; /* Jaune Warn */
+            --danger-color: #f23f43;
+            --border-radius: 8px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; }
+        body { background-color: var(--bg-main); color: var(--text-main); padding: 2rem; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 1200px; }
+        
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; border-bottom: 1px solid var(--bg-card); padding-bottom: 1rem; }
+        h1 span { color: var(--warning-color); }
+
+        .btn-action { color: #111214; border: none; padding: 0.6rem 1.2rem; border-radius: var(--border-radius); cursor: pointer; font-weight: bold; transition: opacity 0.2s ease; text-decoration: none; display: inline-block; }
+        .btn-action:hover { opacity: 0.85; }
+        .btn-warn { background-color: var(--warning-color); }
+
+        .nav-tabs { display: flex; gap: 10px; margin-bottom: 1.5rem; }
+        .tab-link { background-color: var(--bg-card); color: var(--text-muted); text-decoration: none; padding: 0.6rem 1.2rem; border-radius: var(--border-radius); font-weight: 600; font-size: 0.95rem; transition: all 0.2s ease; }
+        .tab-link:hover { color: var(--text-main); background-color: #35373c; }
+        .tab-link.active { background-color: var(--warning-color); color: #111214; }
+
+        .table-responsive { background-color: var(--bg-card); border-radius: var(--border-radius); overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { background-color: var(--bg-table-header); padding: 1rem; font-size: 0.9rem; text-transform: uppercase; }
+        td { padding: 1rem; border-bottom: 1px solid #35373c; font-size: 0.95rem; }
+        tr:last-child td { border-bottom: none; }
+        .user-id { font-family: monospace; background-color: var(--bg-main); padding: 0.2rem 0.4rem; border-radius: 4px; color: var(--text-muted); }
+        .badge-modo { background-color: rgba(255, 255, 255, 0.08); padding: 0.2rem 0.5rem; border-radius: 4px; }
+        .date { color: var(--text-muted); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>🛡️ Staff Dashboard | <span>Avertissements</span></h1>
+                <p style="color: var(--text-muted); margin-top: 0.3rem;">Historique des avertissements (Warns) reçus par les membres</p>
+            </div>
+            <a href="ajouter.html" class="btn-action btn-warn">+ Ajouter un Ban</a>
+        </header>
+
+        <div class="nav-tabs">
+            <a href="index.html" class="tab-link">🔇 Mutes</a>
+            <a href="warns.html" class="tab-link active">⚠️ Avertissements</a>
+            <a href="bans.html" class="tab-link">🔨 Bannissements</a>
+        </div>
+
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Utilisateur</th>
+                        <th>ID Discord</th>
+                        <th>Raison du Warn</th>
+                        <th>Modérateur</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>@UserDistrait</strong></td>
+                        <td><span class="user-id">987654321098765432</span></td>
+                        <td>Erreur de salon répétée malgré les rappels oraux.</td>
+                        <td><span class="badge-modo">@Alex_Modo</span></td>
+                        <td class="date">03/06/2026</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

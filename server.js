@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const { Pool } = require('pg');
-const { Client, GatewayIntentBits } = require('discord.js'); // On importe Discord
+const { Client, GatewayIntentBits } = require('discord.js');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,56 +30,82 @@ const client = new Client({
     ]
 });
 
-// Événement : Quand le bot s'allume
 client.once('ready', () => {
     console.log(`🤖 Bot Discord connecté en tant que : ${client.user.tag} !`);
 });
 
-// Événement : Quand un message est envoyé sur le serveur Discord
 client.on('messageCreate', async (message) => {
-    // On ignore les messages des autres bots et ceux qui ne commencent pas par "!"
     if (message.author.bot || !message.content.startsWith('!')) return;
 
     const args = message.content.slice(1).trim().split(/ +/);
     const command = args.shift().toLowerCase();
 
-    // COMMANDES DE TEST : !ban, !mute, !warn
-    // Syntaxe attendue sur Discord : !ban @Pseudo Raison du ban
     if (command === 'ban' || command === 'mute' || command === 'warn') {
         const target = message.mentions.members.first();
         
         if (!target) {
-            return message.reply("❌ Tu dois mentionner un utilisateur ! Exemple : `!ban @Pseudo raison`");
+            return message.reply("❌ Tu dois mentionner un utilisateur ! Exemple : `!mute @Pseudo 30m raison`");
         }
 
-        // On récupère la raison (tout ce qui est écrit après la mention)
-        const reason = args.slice(1).join(' ') || "Aucune raison spécifiée";
         const moderator = message.author.tag;
         const username = target.user.username;
         const user_id = target.id;
 
         try {
             if (command === 'ban') {
-                // 1. Action réelle sur Discord
+                const reason = args.slice(1).join(' ') || "Aucune raison spécifiée";
                 await target.ban({ reason: reason });
-                // 2. Sauvegarde automatique dans Render SQL
                 await pool.query(
                     'INSERT INTO bans (username, user_id, reason, moderator) VALUES ($1, $2, $3, $4)',
                     [username, user_id, reason, moderator]
                 );
-                message.channel.send(`🔨 **${username}** a été banni et ajouté au site web !`);
+                message.channel.send(`🔨 **${username}** a été banni de Discord et ajouté au site web !`);
             } 
             
             else if (command === 'mute') {
-                // Pour le mute, on ajoute par défaut une durée fixe de 24h pour le site
+                // On récupère l'argument du temps (ex: 10m, 2h, 1d)
+                const timeArg = args[1]; 
+                let ms = 0;
+                let durationText = "24 Heures"; // Temps par défaut si non spécifié
+
+                if (timeArg) {
+                    const timeValue = parseInt(timeArg);
+                    const timeUnit = timeArg.slice(-1).toLowerCase();
+
+                    if (timeUnit === 'm') {
+                        ms = timeValue * 60 * 1000;
+                        durationText = `${timeValue} Minute(s)`;
+                    } else if (timeUnit === 'h') {
+                        ms = timeValue * 60 * 60 * 1000;
+                        durationText = `${timeValue} Heure(s)`;
+                    } else if (timeUnit === 'd') {
+                        ms = timeValue * 24 * 60 * 60 * 1000;
+                        durationText = `${timeValue} Jour(s)`;
+                    }
+                }
+
+                // Si le format du temps n'était pas valide ou absent, on met 24h par défaut
+                if (ms === 0) {
+                    ms = 24 * 60 * 60 * 1000; 
+                    durationText = "24 Heures";
+                }
+
+                // On récupère la raison (tout ce qui est écrit après le temps)
+                const reason = args.slice(2).join(' ') || "Aucune raison spécifiée";
+
+                // 1. Appliquer le VRAI mute (Timeout) sur Discord
+                await target.timeout(ms, reason);
+
+                // 2. Sauvegarde dans Render SQL
                 await pool.query(
                     'INSERT INTO mutes (username, user_id, reason, moderator, duration) VALUES ($1, $2, $3, $4, $5)',
-                    [username, user_id, reason, moderator, '24 Heures']
+                    [username, user_id, reason, moderator, durationText]
                 );
-                message.channel.send(`🔇 **${username}** a été muté et ajouté au site web !`);
+                message.channel.send(`🔇 **${username}** a été muté pendant **${durationText}** sur Discord et ajouté au site !`);
             } 
             
             else if (command === 'warn') {
+                const reason = args.slice(1).join(' ') || "Aucune raison spécifiée";
                 await pool.query(
                     'INSERT INTO warns (username, user_id, reason, moderator) VALUES ($1, $2, $3, $4)',
                     [username, user_id, reason, moderator]
@@ -94,12 +120,10 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// On connecte le bot avec le Token secret qui sera caché sur Render
 client.login(process.env.DISCORD_TOKEN);
 
-
 // -------------------------------------------------------------
-// 3. SITE WEB API (TES ROUTES SONT INCHANGÉES)
+// 3. SITE WEB API 
 // -------------------------------------------------------------
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));

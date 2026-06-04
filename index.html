@@ -86,5 +86,39 @@
             </table>
         </div>
     </div>
+    <script>
+        // Fonction pour charger les mutes depuis l'API de ton serveur
+        function chargerMutes() {
+            fetch('/api/sanctions/mutes')
+                .then(res => res.json())
+                .then(mutes => {
+                    const tbody = document.querySelector('tbody');
+                    tbody.innerHTML = ''; // On vide le faux membre d'exemple
+
+                    if (mutes.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Aucun utilisateur muté pour le moment. 🔇</td></tr>`;
+                        return;
+                    }
+
+                    // On affiche chaque vrai mute trouvé dans la base SQL
+                    mutes.forEach(mute => {
+                        const dateFormatee = new Date(mute.date_added).toLocaleDateString('fr-FR');
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td><strong>${mute.username}</strong></td>
+                            <td><span class="user-id">${mute.user_id}</span></td>
+                            <td class="reason">${mute.reason}</td>
+                            <td><span class="badge-modo">${mute.moderator}</span></td>
+                            <td class="date">${mute.duration} (${dateFormatee})</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                })
+                .catch(err => console.error("Erreur de chargement :", err));
+        }
+
+        // On lance le chargement dès que la page s'ouvre
+        document.addEventListener('DOMContentLoaded', chargerMutes);
+    </script>
 </body>
 </html>

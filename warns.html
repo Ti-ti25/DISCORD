@@ -82,5 +82,36 @@
             </table>
         </div>
     </div>
+    <script>
+        function chargerWarns() {
+            fetch('/api/sanctions/warns')
+                .then(res => res.json())
+                .then(warns => {
+                    const tbody = document.querySelector('tbody');
+                    tbody.innerHTML = ''; // On vide l'exemple
+
+                    if (warns.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Aucun avertissement enregistré. ⚠️</td></tr>`;
+                        return;
+                    }
+
+                    warns.forEach(warn => {
+                        const dateFormatee = new Date(warn.date_added).toLocaleDateString('fr-FR');
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td><strong>${warn.username}</strong></td>
+                            <td><span class="user-id">${warn.user_id}</span></td>
+                            <td class="reason">${warn.reason}</td>
+                            <td><span class="badge-modo">${warn.moderator}</span></td>
+                            <td class="date">${dateFormatee}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                })
+                .catch(err => console.error("Erreur de chargement :", err));
+        }
+
+        document.addEventListener('DOMContentLoaded', chargerWarns);
+    </script>
 </body>
 </html>

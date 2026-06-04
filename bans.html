@@ -82,5 +82,36 @@
             </table>
         </div>
     </div>
+    <script>
+        function chargerBans() {
+            fetch('/api/sanctions/bans')
+                .then(res => res.json())
+                .then(bans => {
+                    const tbody = document.querySelector('tbody');
+                    tbody.innerHTML = ''; // On vide l'exemple
+
+                    if (bans.length === 0) {
+                        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Aucun utilisateur banni. 🔨</td></tr>`;
+                        return;
+                    }
+
+                    bans.forEach(ban => {
+                        const dateFormatee = new Date(ban.date_added).toLocaleDateString('fr-FR');
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td><strong>${ban.username}</strong></td>
+                            <td><span class="user-id">${ban.user_id}</span></td>
+                            <td class="reason">${ban.reason}</td>
+                            <td><span class="badge-modo">${ban.moderator}</span></td>
+                            <td class="date">${dateFormatee}</td>
+                        `;
+                        tbody.appendChild(row);
+                    });
+                })
+                .catch(err => console.error("Erreur de chargement :", err));
+        }
+
+        document.addEventListener('DOMContentLoaded', chargerBans);
+    </script>
 </body>
 </html>

@@ -59,9 +59,9 @@ const sanctionCommand = {
         },
         {
             name: 'duree',
-            description: 'Pour les Mutes uniquement (ex: 15m, 2h, 1d). Par défaut: 24h.',
+            description: 'La durée de la sanction (ex: 15m, 2h, 1d). Obligatoire pour les Mutes !',
             type: ApplicationCommandOptionType.String,
-            required: false
+            required: true // Devient obligatoire !
         }
     ]
 };

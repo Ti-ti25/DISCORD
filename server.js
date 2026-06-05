@@ -1,7 +1,7 @@
 const express = require('express');
 const path = require('path');
 const { Pool } = require('pg');
-const { Client, GatewayIntentBits, ApplicationCommandOptionType, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 const session = require('express-session');
 const fetch = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
  
@@ -19,14 +19,12 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: process.env.NODE_ENV === 'production', // true sur Render (HTTPS)
+        secure: process.env.NODE_ENV === 'production',
         maxAge: 1000 * 60 * 60 * 24 // 24h
     }
 }));
- 
-// MODIFICATION : On ne sert en accès libre que le dossier public (qui contient login.html)
-// On ne met PAS "app.use(express.static(__dirname))" sinon tout le site est en accès libre !
-app.use(express.static(path.join(__dirname, 'public')));
+
+// SÉCURITÉ : On retire express.static(__dirname) pour empêcher l'accès sans connexion !
  
 // -------------------------------------------------------------
 // VARIABLES D'ENVIRONNEMENT
@@ -37,14 +35,13 @@ const CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
  
-// Database Postgres
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
 });
  
 // -------------------------------------------------------------
-// BOT DISCORD (pour appliquer les sanctions en direct)
+// BOT DISCORD
 // -------------------------------------------------------------
 const client = new Client({
     intents: [
@@ -67,12 +64,12 @@ function requireAuth(req, res, next) {
     if (req.session && req.session.user) {
         return next();
     }
-    // Si pas connecté, on redirige vers la page de login
+    // Si l'utilisateur n'est pas connecté, il va vers la page de connexion
     res.redirect('/login.html');
 }
  
 // -------------------------------------------------------------
-// 3. OAUTH2 DISCORD (CONNEXION)
+// OAUTH2 DISCORD (CONNEXION)
 // -------------------------------------------------------------
 app.get('/auth/discord', (req, res) => {
     const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify`;
@@ -107,7 +104,6 @@ app.get('/auth/discord/callback', async (req, res) => {
         });
         const userData = await userResponse.json();
  
-        // Sauvegarde de l'utilisateur dans la session
         req.session.user = {
             id: userData.id,
             username: userData.username,
@@ -128,9 +124,8 @@ app.get('/auth/logout', (req, res) => {
 });
  
 // -------------------------------------------------------------
-// 4. SITE WEB — ROUTES PROTEGEES (Vérifiées par requireAuth)
+// SITE WEB — ROUTES PROTEGEES
 // -------------------------------------------------------------
- 
 app.get('/', requireAuth, (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -147,16 +142,14 @@ app.get('/bans.html', requireAuth, (req, res) => {
     res.sendFile(path.join(__dirname, 'bans.html'));
 });
  
-// Route d'accès à la page de login (publique)
+// Route publique pour afficher ton fichier "login.html" situé à la racine
 app.get('/login.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'login.html'));
+    res.sendFile(path.join(__dirname, 'login.html'));
 });
  
 // -------------------------------------------------------------
 // API — GESTION DES SANCTIONS (PROTEGEE)
 // -------------------------------------------------------------
- 
-// Récupérer les mutes
 app.get('/api/sanctions/mutes', requireAuth, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM mutes ORDER BY id DESC');
@@ -166,7 +159,6 @@ app.get('/api/sanctions/mutes', requireAuth, async (req, res) => {
     }
 });
  
-// Récupérer les warns
 app.get('/api/sanctions/warns', requireAuth, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM warns ORDER BY id DESC');
@@ -186,7 +178,6 @@ app.get('/api/sanctions/bans', requireAuth, async (req, res) => {
     }
 });
  
-// Supprimer une sanction (et agir sur Discord si nécessaire)
 app.delete('/api/sanctions/:table/:id', requireAuth, async (req, res) => {
     const { table, id } = req.params;
     const validTables = ['mutes', 'warns', 'bans'];
@@ -196,7 +187,6 @@ app.delete('/api/sanctions/:table/:id', requireAuth, async (req, res) => {
     }
  
     try {
-        // 1. On récupère d'abord l'ID Discord de l'utilisateur de la sanction avant de supprimer la ligne
         const dataQuery = await pool.query(`SELECT user_id FROM ${table} WHERE id = $1`, [id]);
         
         if (dataQuery.rows.length > 0) {
@@ -231,7 +221,7 @@ app.delete('/api/sanctions/:table/:id', requireAuth, async (req, res) => {
 });
  
 // -------------------------------------------------------------
-// 5. DÉMARRAGE DU SERVEUR
+// DÉMARRAGE
 // -------------------------------------------------------------
 app.listen(PORT, () => {
     console.log(`🚀 Serveur en ligne sur le port ${PORT}`);

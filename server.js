@@ -12,28 +12,29 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
  
 // -------------------------------------------------------------
-// CONFIGURATION DE LA SESSION (CORRIGÉE POUR RENDER & CHROME)
+// CONFIGURATION DE LA SESSION
 // -------------------------------------------------------------
-app.set('trust proxy', 1); // Indispensable sur Render pour que les cookies fonctionnent
+app.set('trust proxy', 1);
 
 app.use(session({
     secret: process.env.SESSION_SECRET || 'phrase_secrete_par_defaut_123',
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: true, // Force le cookie sécurisé car Render est obligatoirement en HTTPS
-        maxAge: 1000 * 60 * 60 * 24 // Durée : 24 heures
+        secure: true,
+        maxAge: 1000 * 60 * 60 * 24 // 24h
     }
 }));
  
 // -------------------------------------------------------------
-// APPLICATION DES VARIABLES D'ENVIRONNEMENT
+// VARIABLES D'ENVIRONNEMENT
 // -------------------------------------------------------------
 const GUILD_ID = process.env.GUILD_ID;
 const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
+const MODERATOR_ROLE_ID = process.env.MODERATOR_ROLE_ID; // 👈 Ton nouveau rôle configuré sur Render
  
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -47,7 +48,7 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildModeration,
-        GatewayIntentBits.GuildMembers
+        GatewayIntentBits.GuildMembers // ⚠️ Assure-toi que cette case "Server Members Intent" est bien cochée sur le Discord Developer Portal !
     ]
 });
  
@@ -58,17 +59,17 @@ client.once('ready', () => {
 });
  
 // -------------------------------------------------------------
-// MIDDLEWARE DE VÉRIFICATION DE CONNEXION
+// MIDDLEWARE DE VÉRIFICATION
 // -------------------------------------------------------------
 function requireAuth(req, res, next) {
     if (req.session && req.session.user) {
-        return next(); // Connecté ! On laisse passer l'utilisateur
+        return next();
     }
-    res.redirect('/login.html'); // Non connecté ➔ Retour au login
+    res.redirect('/login.html');
 }
  
 // -------------------------------------------------------------
-// FLUX D'AUTHENTIFICATION OAUTH2 DISCORD
+// FLUX OAUTH2 DISCORD WITH ROLE CHECK
 // -------------------------------------------------------------
 app.get('/auth/discord', (req, res) => {
     const discordAuthUrl = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify`;
@@ -80,7 +81,7 @@ app.get('/auth/discord/callback', async (req, res) => {
     if (!code) return res.send("Erreur : Code de connexion manquant.");
  
     try {
-        // 1. Échange du code contre un Token Discord
+        // 1. Échange du code contre un Token
         const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
             method: 'POST',
             body: new URLSearchParams({
@@ -96,26 +97,50 @@ app.get('/auth/discord/callback', async (req, res) => {
         const tokenData = await tokenResponse.json();
         if (tokenData.error) {
             console.error("Erreur Token Discord :", tokenData);
-            return res.send("Erreur d'authentification (Vérifie ton Client Secret).");
+            return res.send("Erreur d'authentification.");
         }
  
-        // 2. Récupération du profil de l'utilisateur connecté
+        // 2. Récupération de l'identité de l'utilisateur
         const userResponse = await fetch('https://discord.com/api/users/@me', {
             headers: { Authorization: `Bearer ${tokenData.access_token}` }
         });
         const userData = await userResponse.json();
  
-        // 3. On enregistre l'utilisateur dans la session
+        // 3. VÉRIFICATION DU RÔLE MODÉRATEUR SUR LE SERVEUR DISCORD
+        const guild = client.guilds.cache.get(GUILD_ID);
+        if (!guild) {
+            console.error("❌ Le bot n'est pas présent sur le serveur configuré (GUILD_ID).");
+            return res.send("Erreur de configuration : Le bot n'est pas sur le serveur Discord.");
+        }
+ 
+        // On récupère le membre en direct sur le serveur Discord
+        let member;
+        try {
+            member = await guild.members.fetch(userData.id);
+        } catch (e) {
+            // Si l'utilisateur n'est même pas sur le serveur Discord
+            return res.send("Accès refusé : Vous ne faites pas partie du serveur Discord.");
+        }
+ 
+        // On regarde si le membre possède l'ID du rôle modérateur
+        const hasRole = member.roles.cache.has(MODERATOR_ROLE_ID);
+        
+        if (!hasRole) {
+            console.log(`🚫 Accès refusé pour ${userData.username} : Rôle modérateur manquant.`);
+            return res.send("Accès refusé : Vous n'avez pas le rôle requis pour accéder au Panel Staff.");
+        }
+ 
+        // 4. Si tout est bon, on crée la session
         req.session.user = {
             id: userData.id,
             username: userData.username
         };
  
-        console.log(`🔑 Connexion réussie pour : ${userData.username}`);
+        console.log(`🔑 Connexion validée pour le modérateur : ${userData.username}`);
         res.redirect('/');
     } catch (err) {
         console.error(err);
-        res.send("Erreur interne du serveur lors de la connexion.");
+        res.send("Erreur interne du serveur lors de la vérification de vos permissions.");
     }
 });
  
@@ -125,7 +150,7 @@ app.get('/auth/logout', (req, res) => {
 });
  
 // -------------------------------------------------------------
-// PAGES DU SITE WEB (PROTÉGÉES PAR REQUIREAUTH)
+// PAGES DU SITE WEB
 // -------------------------------------------------------------
 app.get('/', requireAuth, (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
@@ -143,13 +168,12 @@ app.get('/bans.html', requireAuth, (req, res) => {
     res.sendFile(path.join(__dirname, 'bans.html'));
 });
  
-// PAGE PUBLIQUE : Accessible sans connexion
 app.get('/login.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'login.html'));
 });
  
 // -------------------------------------------------------------
-// ROUTES DE L'API (PROTÉGÉES)
+// ROUTES DE L'API
 // -------------------------------------------------------------
 app.get('/api/sanctions/mutes', requireAuth, async (req, res) => {
     try {
@@ -204,9 +228,6 @@ app.delete('/api/sanctions/:table/:id', requireAuth, async (req, res) => {
     }
 });
  
-// -------------------------------------------------------------
-// DÉMARRAGE DU SERVEUR
-// -------------------------------------------------------------
 app.listen(PORT, () => {
     console.log(`🚀 Serveur actif sur le port ${PORT}`);
 });
